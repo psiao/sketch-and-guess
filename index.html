@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sketch &amp; Guess</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- ===================== JOIN ===================== -->
+  <section id="screen-join" class="screen active">
+    <div class="wrap">
+      <div class="brandbar">
+        <div class="logo">S</div>
+        <h1>Sketch &amp; Guess</h1>
+      </div>
+      <div class="card">
+        <div class="field">
+          <label for="name">Your name</label>
+          <input id="name" maxlength="20" placeholder="e.g. Alex" autocomplete="off" />
+        </div>
+
+        <div class="field">
+          <label for="join-code">Join a game</label>
+          <div class="row">
+            <input id="join-code" maxlength="4" placeholder="CODE" style="text-transform:uppercase" autocomplete="off" />
+            <button id="btn-join" class="btn-primary" style="flex:0 0 auto">Join</button>
+          </div>
+        </div>
+
+        <div class="divider">or</div>
+
+        <div class="field">
+          <label>Host a new game</label>
+          <div class="row">
+            <select id="opt-lang" title="Language">
+              <option value="en">English</option>
+              <option value="es">Español</option>
+            </select>
+            <select id="opt-rounds" title="Rounds">
+              <option value="1">1 round</option>
+              <option value="2">2 rounds</option>
+              <option value="3" selected>3 rounds</option>
+            </select>
+            <select id="opt-time" title="Seconds per turn">
+              <option value="60">60s</option>
+              <option value="80" selected>80s</option>
+              <option value="100">100s</option>
+            </select>
+          </div>
+        </div>
+        <button id="btn-create" class="btn-ghost" style="width:100%">Create game</button>
+
+        <div id="join-error" class="error"></div>
+        <p class="hint" id="rejoin-hint" style="display:none"></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== LOBBY ===================== -->
+  <section id="screen-lobby" class="screen">
+    <div class="wrap">
+      <div class="brandbar">
+        <div class="logo">S</div>
+        <h1>Sketch &amp; Guess</h1>
+      </div>
+      <div class="card">
+        <label class="hint" style="text-transform:uppercase;letter-spacing:.05em">Room code</label>
+        <div class="roomcode" id="lobby-code">----</div>
+        <div style="text-align:center">
+          <button id="btn-copy" class="btn-ghost">Copy invite link</button>
+        </div>
+
+        <ul class="playerlist" id="lobby-players"></ul>
+
+        <button id="btn-start" class="btn-primary" style="width:100%">Start game</button>
+        <p class="hint" id="lobby-hint">Waiting for the host to start…</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== GAME ===================== -->
+  <section id="screen-game" class="screen">
+    <div class="game-shell">
+      <div class="topbar">
+        <div class="round" id="game-round">Round 1</div>
+        <div class="word" id="game-word">_ _ _</div>
+        <div class="timer" id="game-timer">--</div>
+      </div>
+
+      <div class="game-grid">
+        <div class="canvas-wrap">
+          <canvas id="board" width="800" height="600"></canvas>
+          <div class="toolbar hidden" id="toolbar">
+            <span id="swatches"></span>
+            <input type="range" id="brush" min="2" max="26" value="6" title="Brush size" />
+            <div class="spacer"></div>
+            <button id="btn-clear" class="btn-ghost">Clear</button>
+          </div>
+        </div>
+
+        <div class="side">
+          <div class="panel">
+            <h3>Scores</h3>
+            <ul class="scores" id="game-scores"></ul>
+          </div>
+          <div class="panel">
+            <h3>Guesses</h3>
+            <div class="chat">
+              <div class="chatlog" id="chatlog"></div>
+              <div class="chatform">
+                <input id="guess-input" placeholder="Type your guess…" autocomplete="off" />
+                <button id="guess-send" class="btn-primary">Send</button>
+              </div>
+            </div>
+          </div>
+          <button id="btn-leave" class="btn-warn">Leave game</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== END ===================== -->
+  <section id="screen-end" class="screen">
+    <div class="wrap">
+      <div class="brandbar">
+        <div class="logo">S</div>
+        <h1>Final results</h1>
+      </div>
+      <div class="card">
+        <ul class="podium" id="end-podium"></ul>
+        <button id="btn-again" class="btn-primary" style="width:100%">Play again</button>
+        <button id="btn-home" class="btn-ghost" style="width:100%;margin-top:8px">Back to start</button>
+        <p class="hint" id="end-hint"></p>
+      </div>
+    </div>
+  </section>
+
+  <script type="module" src="game.js"></script>
+</body>
+</html>
