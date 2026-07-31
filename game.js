@@ -80,7 +80,7 @@ let myGuessedKey = "";          // per-turn local guard so I only submit one cor
 // host scoring state
 let hostTurnKey = "", hostRank = 0, hostScored = new Set();
 
-let drawing = { active: false, color: "#111111", size: 6, last: null };
+let drawing = { active: false, color: "#111111", size: 6, last: null, tool: "pen" };
 const PALETTE = ["#111111", "#ffffff", "#e11d48", "#ea580c", "#f59e0b",
   "#16a34a", "#0891b2", "#2563eb", "#7c3aed", "#db2777", "#78350f", "#9ca3af"];
 
@@ -216,8 +216,12 @@ function renderMeta() {
     show("screen-end");
     renderPodium();
     $("btn-again").style.display = IS_HOST ? "block" : "none";
+    $("again-diff").style.display = IS_HOST ? "block" : "none";
     $("end-hint").textContent = IS_HOST ? "" : "Waiting for the host…";
-    if (soundEndedKey !== "end") { soundEndedKey = "end"; Sound.gameEnd(); }
+    if (soundEndedKey !== "end") {
+      soundEndedKey = "end"; Sound.gameEnd();
+      if (IS_HOST) $("again-diff").value = String(meta.difficulty || DEFAULT_DIFFICULTY);
+    }
   } else {
     soundEndedKey = "";
     show("screen-game");
@@ -325,7 +329,13 @@ $("btn-start").addEventListener("click", () => {
   if (connectedPlayers.length < 2) { alert("Need at least 2 connected players (not observers) to start."); return; }
   startGame();
 });
-$("btn-again").addEventListener("click", () => { if (IS_HOST) startGame(); });
+$("btn-again").addEventListener("click", async () => {
+  if (!IS_HOST) return;
+  const d = Number(($("again-diff") && $("again-diff").value) || meta.difficulty || DEFAULT_DIFFICULTY);
+  meta.difficulty = d; // local mirror so the picker sees it immediately
+  await update(ref(db, `rooms/${ROOM}/meta`), { difficulty: d });
+  startGame();
+});
 $("btn-home").addEventListener("click", leaveGame);
 $("btn-leave").addEventListener("click", leaveGame);
 $("btn-mute").addEventListener("click", () => {
@@ -349,23 +359,29 @@ function currentPool(lang, level) {
   return list.length ? list.slice() : ["circle", "square", "star"];
 }
 
-// Host-side draw deck: guarantees no word repeats until the whole level list
-// has been used once. Lives only in the host's browser (not written to
-// Firebase), so upcoming words aren't exposed to guessers.
-let hostDeck = [];
-function shuffleInPlace(a) {
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
+// No-repeat word selection, persisted per ROOM in meta.usedWords.
+// A word won't come up again — across turns AND across games in the same room —
+// until the whole difficulty level has been used, then the pool resets. Kept in
+// Firebase (not just host memory) so it survives a host refresh and a new game.
+function usedList() {
+  const u = meta && meta.usedWords;
+  if (Array.isArray(u)) return u.slice();
+  return u ? Object.values(u) : [];
+}
+function pickNextWord() {
+  const pool = currentPool(meta.lang || "en", meta.difficulty || DEFAULT_DIFFICULTY);
+  let used = usedList();
+  let avail = pool.filter((w) => !used.includes(w));
+  if (avail.length === 0) {
+    // whole level exhausted -> reset, but never repeat the word just shown
+    used = [];
+    const last = meta && meta.word;
+    avail = pool.filter((w) => w !== last);
+    if (avail.length === 0) avail = pool.slice(); // level has only 1 word
   }
-  return a;
-}
-function refillHostDeck() {
-  hostDeck = shuffleInPlace(currentPool(meta.lang || "en", meta.difficulty || DEFAULT_DIFFICULTY));
-}
-function nextWord() {
-  if (!hostDeck.length) refillHostDeck();
-  return hostDeck.pop();
+  const word = avail[Math.floor(Math.random() * avail.length)];
+  used.push(word);
+  return { word, used };
 }
 
 async function startGame() {
@@ -381,23 +397,24 @@ async function startGame() {
   });
   await update(ref(db), updates);
   await remove(ref(db, `rooms/${ROOM}/chat`));
-  refillHostDeck(); // fresh no-repeat word deck for this game
   await update(ref(db, `rooms/${ROOM}/meta`), { drawOrder: order, round: 1, turnIndex: 0, state: "starting" });
   await beginTurn(1, 0, order);
 }
 
 async function beginTurn(round, turnIndex, order) {
   const drawer = order[turnIndex];
-  const word = nextWord();
+  const { word, used } = pickNextWord();
   await remove(ref(db, `rooms/${ROOM}/strokes`));
   await remove(ref(db, `rooms/${ROOM}/correct`)); // reset per-turn correct feed
   hostTurnKey = `${round}:${turnIndex}`; hostRank = 0; hostScored = new Set();
   const flags = {};
   Object.keys(players).forEach((uid) => { flags[`rooms/${ROOM}/players/${uid}/correctThisTurn`] = false; });
   await update(ref(db), flags);
+  meta.usedWords = used; // keep local mirror fresh for the next pick
   await update(ref(db, `rooms/${ROOM}/meta`), {
     state: "drawing", round, turnIndex, currentDrawer: drawer,
-    word, wordLen: word.length, turnEndsAt: Date.now() + (meta.turnSeconds || 80) * 1000,
+    word, wordLen: word.length, usedWords: used,
+    turnEndsAt: Date.now() + (meta.turnSeconds || 80) * 1000,
   });
   await sysMsg(`${players[drawer]?.name || "Someone"} is drawing!`);
 }
@@ -498,10 +515,16 @@ function appendChat(m) {
 // ===========================================================================
 const canvas = $("board");
 const ctx = canvas.getContext("2d");
+const PEN_CURSOR = 'url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2226%22%20height%3D%2226%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M17%203a2.83%202.83%200%201%201%204%204L7.5%2020.5%202%2022l1.5-5.5L17%203z%22%20stroke%3D%22%23ffffff%22%20stroke-width%3D%223.4%22%2F%3E%3Cpath%20d%3D%22M17%203a2.83%202.83%200%201%201%204%204L7.5%2020.5%202%2022l1.5-5.5L17%203z%22%20stroke%3D%22%231f2937%22%20stroke-width%3D%221.6%22%20fill%3D%22%23fcd34d%22%2F%3E%3C%2Fsvg%3E") 3 23, crosshair';
+function updateCursor() {
+  const amDrawer = meta && meta.currentDrawer === ME && meta.state === "drawing" && myRole !== "observer";
+  if (!amDrawer) { canvas.style.cursor = "default"; return; }
+  canvas.style.cursor = drawing.tool === "fill" ? "crosshair" : PEN_CURSOR;
+}
 function setupToolbarVisibility() {
   const amDrawer = meta && meta.currentDrawer === ME && meta.state === "drawing" && myRole !== "observer";
   $("toolbar").classList.toggle("hidden", !amDrawer);
-  canvas.style.cursor = amDrawer ? "crosshair" : "default";
+  updateCursor();
 }
 (function buildTools() {
   const box = $("swatches");
@@ -518,6 +541,14 @@ function setupToolbarVisibility() {
     box.appendChild(s);
   });
   $("brush").addEventListener("input", (e) => (drawing.size = Number(e.target.value)));
+  const setTool = (t) => {
+    drawing.tool = t;
+    $("tool-pen").classList.toggle("sel", t === "pen");
+    $("tool-fill").classList.toggle("sel", t === "fill");
+    updateCursor();
+  };
+  $("tool-pen").addEventListener("click", () => setTool("pen"));
+  $("tool-fill").addEventListener("click", () => setTool("fill"));
   $("btn-clear").addEventListener("click", async () => {
     if (meta.currentDrawer !== ME) return;
     await push(ref(db, `rooms/${ROOM}/strokes`), { type: "clear" });
@@ -530,7 +561,15 @@ function pos(e) {
   const cy = (e.touches ? e.touches[0].clientY : e.clientY) - r.top;
   return { x: cx / r.width, y: cy / r.height };
 }
-function startDraw(e) { if (!canDraw()) return; e.preventDefault(); drawing.active = true; drawing.last = pos(e); }
+function startDraw(e) {
+  if (!canDraw()) return; e.preventDefault();
+  if (drawing.tool === "fill") {
+    const p = pos(e);
+    push(ref(db, `rooms/${ROOM}/strokes`), { type: "fill", x: p.x, y: p.y, color: drawing.color });
+    return;
+  }
+  drawing.active = true; drawing.last = pos(e);
+}
 function moveDraw(e) {
   if (!drawing.active || !canDraw()) return; e.preventDefault();
   const p = pos(e);
@@ -553,12 +592,49 @@ function applyStroke(s) {
   const key = `${meta?.round}:${meta?.currentDrawer}`;
   if (key !== lastDrawerKey) { ctx.clearRect(0, 0, canvas.width, canvas.height); lastDrawerKey = key; }
   if (s.type === "clear") { ctx.clearRect(0, 0, canvas.width, canvas.height); return; }
+  if (s.type === "fill") { floodFill(s.x * canvas.width, s.y * canvas.height, s.color); return; }
   if (s.type !== "line") return;
   ctx.strokeStyle = s.color; ctx.lineWidth = s.size; ctx.lineCap = "round"; ctx.lineJoin = "round";
   ctx.beginPath();
   ctx.moveTo(s.x0 * canvas.width, s.y0 * canvas.height);
   ctx.lineTo(s.x1 * canvas.width, s.y1 * canvas.height);
   ctx.stroke();
+}
+
+function hexToRgb(hex) {
+  const m = String(hex || "").replace("#", "");
+  return [parseInt(m.slice(0, 2), 16) || 0, parseInt(m.slice(2, 4), 16) || 0, parseInt(m.slice(4, 6), 16) || 0];
+}
+// Flood fill from (px,py) with fill color. Deterministic across clients because
+// every client has applied the same strokes in the same order.
+function floodFill(px, py, hex) {
+  const w = canvas.width, h = canvas.height;
+  px = Math.round(px); py = Math.round(py);
+  if (px < 0 || py < 0 || px >= w || py >= h) return;
+  const img = ctx.getImageData(0, 0, w, h);
+  const d = img.data;
+  const at = (x, y) => (y * w + x) * 4;
+  const s = at(px, py);
+  const tr = d[s], tg = d[s + 1], tb = d[s + 2], ta = d[s + 3];
+  const [fr, fg, fb] = hexToRgb(hex), fa = 255;
+  if (tr === fr && tg === fg && tb === fb && ta === fa) return; // already this color
+  const tol = 40 * 40; // squared tolerance to bridge anti-aliased edges
+  const matches = (i) => {
+    const dr = d[i] - tr, dg = d[i + 1] - tg, db = d[i + 2] - tb, da = d[i + 3] - ta;
+    return dr * dr + dg * dg + db * db + da * da <= tol;
+  };
+  const stack = [px, py];
+  while (stack.length) {
+    const y = stack.pop(), x = stack.pop();
+    const i = at(x, y);
+    if (!matches(i)) continue;
+    d[i] = fr; d[i + 1] = fg; d[i + 2] = fb; d[i + 3] = fa;
+    if (x > 0) stack.push(x - 1, y);
+    if (x < w - 1) stack.push(x + 1, y);
+    if (y > 0) stack.push(x, y - 1);
+    if (y < h - 1) stack.push(x, y + 1);
+  }
+  ctx.putImageData(img, 0, 0);
 }
 
 // ---------------------------------------------------------------------------

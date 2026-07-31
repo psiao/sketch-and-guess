@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Skwibble</title>
-  <link rel="stylesheet" href="styles.css?v=5" />
+  <link rel="stylesheet" href="styles.css?v=6" />
 </head>
 <body>
 
@@ -91,6 +91,17 @@
         </div>
         <ul class="playerlist" id="lobby-players"></ul>
 
+        <div class="howto">
+          <strong>How to play</strong>
+          <ul>
+            <li>Each turn, one player draws the secret word — everyone else guesses in the chat.</li>
+            <li>Type your guess in the chat. Correct guesses score points, and the faster you guess, the more you earn.</li>
+            <li>The person drawing earns points for each correct guess.</li>
+            <li>Drawing tools: pick a color, set brush size, use the fill bucket, or clear the board.</li>
+            <li>Observers can watch and chat but don't draw or score.</li>
+          </ul>
+        </div>
+
         <button id="btn-start" class="btn-primary full">Start game</button>
         <p class="hint" id="lobby-hint">Waiting for the host to start…</p>
       </div>
@@ -120,6 +131,10 @@
           <canvas id="board" width="800" height="600"></canvas>
           <div class="toolbar hidden" id="toolbar">
             <span id="swatches" class="swatches"></span>
+            <span class="tools">
+              <button id="tool-pen" class="tool-btn sel" title="Pen" type="button">✏️</button>
+              <button id="tool-fill" class="tool-btn" title="Fill area" type="button">🪣</button>
+            </span>
             <label class="brushlabel">Brush<input type="range" id="brush" min="2" max="28" value="6" /></label>
             <div class="spacer"></div>
             <button id="btn-clear" class="btn-ghost mini">Clear</button>
@@ -162,6 +177,13 @@
       </div>
       <div class="card">
         <ul class="podium" id="end-podium"></ul>
+        <select id="again-diff" title="Difficulty for the next game" style="width:100%;margin-bottom:8px">
+          <option value="1">Level 1 · Easiest</option>
+          <option value="2">Level 2 · Easy</option>
+          <option value="3">Level 3 · Medium</option>
+          <option value="4">Level 4 · Hard</option>
+          <option value="5">Level 5 · Hardest</option>
+        </select>
         <button id="btn-again" class="btn-primary full">Play again</button>
         <button id="btn-feedback-end" class="btn-ghost full" style="margin-top:8px">💬 Give feedback</button>
         <button id="btn-home" class="btn-ghost full" style="margin-top:8px">Back to start</button>
@@ -186,6 +208,6 @@
     </div>
   </div>
 
-  <script type="module" src="game.js?v=4"></script>
+  <script type="module" src="game.js?v=6"></script>
 </body>
 </html>
