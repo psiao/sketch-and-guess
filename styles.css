@@ -115,7 +115,7 @@ input:focus,select:focus { border-color:var(--brand-accent); box-shadow:0 0 0 3p
 @media (max-width:860px){ .game-grid { grid-template-columns:1fr; } }
 
 .canvas-wrap { background:var(--white); border-radius:var(--radius); box-shadow:var(--shadow); padding:12px; }
-canvas { width:100%; aspect-ratio:4/3; background:#fff; border:1px solid var(--line); border-radius:12px; touch-action:none; display:block; }
+canvas { width:100%; aspect-ratio:4/3; background:#fff; border:1px solid var(--line); border-radius:12px; touch-action:none; display:block; cursor:crosshair; }
 .toolbar { display:flex; align-items:center; gap:12px; margin-top:10px; flex-wrap:wrap; }
 .toolbar.hidden { display:none; }
 .swatches { display:flex; flex-wrap:wrap; gap:6px; }

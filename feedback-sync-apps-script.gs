@@ -1,19 +1,25 @@
 /**
- * Skwibble feedback SYNC (Option A).
- * Pulls feedback from Firebase into this sheet — one tab per game,
- * named "YYYY-MM-DD · CODE", with Timestamp / Player / Rating / Comment.
+ * Engagement Games — feedback SYNC.
+ * Pulls feedback from Firebase into this sheet, consolidated into ONE master
+ * tab PER GAME ("Skwibble Feedback", "Bingo Feedback", …) rather than a tab
+ * per session. Each row carries the game, room code, and date so you can
+ * filter/sort in place.
  *
  * Runs entirely inside your Legal Soft workspace (as you). No public web app.
  *
  * First run: in the editor, select "syncFeedback" and click Run once to
- * authorize. After that, use the "Skwibble → Sync feedback now" menu, and/or
- * run installTrigger() once to auto-sync every 10 minutes.
+ * authorize. After that, use the "Engagement Games → Sync feedback now" menu,
+ * and/or run installTrigger() once to auto-sync every 10 minutes.
+ *
+ * Note: existing per-session tabs from the previous version are left untouched;
+ * new feedback from here on lands in the master tabs.
  */
 var FIREBASE_URL = "https://ls-engagement-games-default-rtdb.firebaseio.com";
+var HEADERS = ["Timestamp", "Game", "Code", "Game date", "Player", "Rating", "Comment"];
 
 function onOpen() {
   SpreadsheetApp.getUi()
-    .createMenu("Skwibble")
+    .createMenu("Engagement Games")
     .addItem("Sync feedback now", "syncFeedback")
     .addToUi();
 }
@@ -32,14 +38,17 @@ function syncFeedback() {
     Object.keys(entries).forEach(function (key) {
       if (synced[key]) return;
       var f = entries[key] || {};
-      var tabName = ((f.gameDate ? f.gameDate + " \u00B7 " : "") + code).substring(0, 90);
-      var sheet = ss.getSheetByName(tabName);
-      if (!sheet) {
-        sheet = ss.insertSheet(tabName);
-        sheet.appendRow(["Timestamp", "Player", "Rating", "Comment"]);
-        sheet.setFrozenRows(1);
-      }
-      sheet.appendRow([new Date(f.ts || Date.now()), f.name || "", f.rating || "", f.comment || ""]);
+      var game = (f.game || "Skwibble").toString().trim() || "Skwibble"; // legacy rows have no game
+      var sheet = getGameSheet_(ss, game);
+      sheet.appendRow([
+        new Date(f.ts || Date.now()),
+        game,
+        code,
+        f.gameDate || "",
+        f.name || "",
+        f.rating || "",
+        f.comment || "",
+      ]);
       synced[key] = true;
       added++;
     });
@@ -47,6 +56,17 @@ function syncFeedback() {
 
   saveSyncedSet_(ss, synced);
   ss.toast(added + " new feedback row(s) added.");
+}
+
+function getGameSheet_(ss, game) {
+  var tabName = (game + " Feedback").substring(0, 90);
+  var sheet = ss.getSheetByName(tabName);
+  if (!sheet) {
+    sheet = ss.insertSheet(tabName);
+    sheet.appendRow(HEADERS);
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
 }
 
 function getSyncedSet_(ss) {

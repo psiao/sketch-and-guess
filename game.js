@@ -22,7 +22,7 @@ import {
   onDisconnect, runTransaction, serverTimestamp, off
 } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-database.js";
 
-import { WORD_PACKS, DEFAULT_PACK_IDS } from "./words.js";
+import { WORDS, DEFAULT_DIFFICULTY } from "./words.js?v=4";
 
 // ---- DOM helpers ----------------------------------------------------------
 const $ = (id) => document.getElementById(id);
@@ -108,6 +108,7 @@ $("btn-create").addEventListener("click", async () => {
     hostUid: ME, lang: $("opt-lang").value,
     totalRounds: Number($("opt-rounds").value),
     turnSeconds: Number($("opt-time").value),
+    difficulty: Number(($("opt-diff") && $("opt-diff").value) || DEFAULT_DIFFICULTY),
     state: "lobby", round: 1, turnIndex: 0,
     currentDrawer: "", word: "", wordLen: 0, turnEndsAt: 0, createdAt: Date.now(),
   };
@@ -342,11 +343,29 @@ async function leaveGame() {
 // ===========================================================================
 // HOST LOGIC
 // ===========================================================================
-function currentPool(lang) {
-  const pool = [];
-  DEFAULT_PACK_IDS.filter((id) => WORD_PACKS[id])
-    .forEach((id) => (WORD_PACKS[id][lang] || []).forEach((w) => pool.push(w)));
-  return pool.length ? pool : ["circle", "square", "star"];
+function currentPool(lang, level) {
+  const byLang = WORDS[lang] || WORDS.en || {};
+  const list = byLang[level] || byLang[DEFAULT_DIFFICULTY] || [];
+  return list.length ? list.slice() : ["circle", "square", "star"];
+}
+
+// Host-side draw deck: guarantees no word repeats until the whole level list
+// has been used once. Lives only in the host's browser (not written to
+// Firebase), so upcoming words aren't exposed to guessers.
+let hostDeck = [];
+function shuffleInPlace(a) {
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+function refillHostDeck() {
+  hostDeck = shuffleInPlace(currentPool(meta.lang || "en", meta.difficulty || DEFAULT_DIFFICULTY));
+}
+function nextWord() {
+  if (!hostDeck.length) refillHostDeck();
+  return hostDeck.pop();
 }
 
 async function startGame() {
@@ -362,13 +381,14 @@ async function startGame() {
   });
   await update(ref(db), updates);
   await remove(ref(db, `rooms/${ROOM}/chat`));
+  refillHostDeck(); // fresh no-repeat word deck for this game
   await update(ref(db, `rooms/${ROOM}/meta`), { drawOrder: order, round: 1, turnIndex: 0, state: "starting" });
   await beginTurn(1, 0, order);
 }
 
 async function beginTurn(round, turnIndex, order) {
   const drawer = order[turnIndex];
-  const word = currentPool(meta.lang || "en")[Math.floor(Math.random() * currentPool(meta.lang || "en").length)];
+  const word = nextWord();
   await remove(ref(db, `rooms/${ROOM}/strokes`));
   await remove(ref(db, `rooms/${ROOM}/correct`)); // reset per-turn correct feed
   hostTurnKey = `${round}:${turnIndex}`; hostRank = 0; hostScored = new Set();
@@ -602,6 +622,7 @@ if ($("fb-send")) $("fb-send").addEventListener("click", async () => {
   const code = ROOM || "lobby";
   try {
     await push(ref(db, "feedback/" + code), {
+      game: "Skwibble",
       name: (players[ME] && players[ME].name) || "",
       rating: fbRating || "",
       comment,
