@@ -571,3 +571,47 @@ $("btn-mute").textContent = Sound.isMuted() ? "🔇" : "🔊";
 // deep link ?room=CODE
 const params = new URLSearchParams(location.search);
 if (params.get("room")) $("join-code").value = params.get("room").toUpperCase();
+
+// ===========================================================================
+// FEEDBACK  →  Firebase  (an Apps Script syncs it into the Google Sheet)
+// ===========================================================================
+let fbRating = 0;
+function openFeedback() {
+  $("feedback-modal").style.display = "flex";
+  $("fb-form").style.display = "block";
+  $("fb-thanks").style.display = "none";
+}
+function closeFeedback() { $("feedback-modal").style.display = "none"; }
+["btn-feedback", "btn-feedback-end"].forEach((id) => {
+  const el = $(id); if (el) el.addEventListener("click", openFeedback);
+});
+if ($("fb-close")) $("fb-close").addEventListener("click", closeFeedback);
+if ($("feedback-modal")) $("feedback-modal").addEventListener("click", (e) => {
+  if (e.target.id === "feedback-modal") closeFeedback();
+});
+document.querySelectorAll("#fb-stars span").forEach((s) => {
+  s.addEventListener("click", () => {
+    fbRating = Number(s.dataset.v);
+    document.querySelectorAll("#fb-stars span").forEach((x) =>
+      x.classList.toggle("on", Number(x.dataset.v) <= fbRating));
+  });
+});
+if ($("fb-send")) $("fb-send").addEventListener("click", async () => {
+  const comment = $("fb-comment").value.trim();
+  if (!fbRating && !comment) return;
+  const code = ROOM || "lobby";
+  try {
+    await push(ref(db, "feedback/" + code), {
+      name: (players[ME] && players[ME].name) || "",
+      rating: fbRating || "",
+      comment,
+      gameDate: new Date((meta && meta.createdAt) || Date.now()).toISOString().slice(0, 10),
+      ts: Date.now(),
+    });
+  } catch (e) {}
+  $("fb-form").style.display = "none";
+  $("fb-thanks").style.display = "block";
+  fbRating = 0; $("fb-comment").value = "";
+  document.querySelectorAll("#fb-stars span").forEach((x) => x.classList.remove("on"));
+  setTimeout(closeFeedback, 1800);
+});

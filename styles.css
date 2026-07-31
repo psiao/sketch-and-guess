@@ -172,3 +172,15 @@ canvas { width:100%; aspect-ratio:4/3; background:#fff; border:1px solid var(--l
 .podium li:nth-child(1) { outline:2px solid #fcd34d; }
 .podium li .nm { font-weight:700; }
 .podium li .pts { margin-left:auto; font-weight:800; color:var(--brand-accent); }
+
+/* ---- feedback modal ---- */
+.modal { position:fixed; inset:0; background:rgba(13,13,13,.5); display:flex; align-items:center; justify-content:center; z-index:50; padding:20px; }
+.modal-card { background:#fff; border-radius:var(--radius); box-shadow:var(--shadow); padding:26px; width:100%; max-width:380px; position:relative; animation:fadein .18s; }
+.modal-x { position:absolute; top:8px; right:10px; background:transparent; color:var(--muted); font-size:24px; line-height:1; padding:2px 8px; }
+.fb-title { margin:0 0 16px; font-size:18px; text-align:center; }
+.stars { display:flex; justify-content:center; gap:8px; margin-bottom:16px; }
+.stars span { font-size:34px; color:#d5dbe6; cursor:pointer; transition:transform .08s, color .12s; }
+.stars span:hover { transform:scale(1.15); }
+.stars span.on { color:var(--brand-accent-2); }
+#fb-comment { width:100%; min-height:84px; resize:vertical; margin-bottom:14px; font-size:14px; }
+.fb-thanks { text-align:center; font-weight:700; font-size:17px; padding:28px 0; color:var(--good); }

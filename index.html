@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Sketch &amp; Guess</title>
-  <link rel="stylesheet" href="styles.css" />
+  <title>Skwibble</title>
+  <link rel="stylesheet" href="styles.css?v=3" />
 </head>
 <body>
 
@@ -14,7 +14,7 @@
       <div class="brandbar">
         <div class="logo">LS</div>
         <div>
-          <h1>Sketch &amp; Guess</h1>
+          <h1>Skwibble</h1>
           <p class="tagline">A Legal Soft game</p>
         </div>
       </div>
@@ -71,7 +71,7 @@
     <div class="wrap">
       <div class="brandbar">
         <div class="logo">LS</div>
-        <div><h1>Sketch &amp; Guess</h1><p class="tagline">Lobby</p></div>
+        <div><h1>Skwibble</h1><p class="tagline">Lobby</p></div>
       </div>
       <div class="card">
         <label class="mini-label">Room code</label>
@@ -100,6 +100,7 @@
         </div>
         <div class="word" id="game-word"></div>
         <div class="tb-right">
+          <button id="btn-feedback" class="iconbtn" title="Feedback">💬</button>
           <button id="btn-mute" class="iconbtn" title="Sound">🔊</button>
           <div class="timer" id="game-timer">–</div>
         </div>
@@ -150,17 +151,34 @@
     <div class="wrap">
       <div class="brandbar">
         <div class="logo">🏆</div>
-        <div><h1>Final results</h1><p class="tagline">Sketch &amp; Guess</p></div>
+        <div><h1>Final results</h1><p class="tagline">Skwibble</p></div>
       </div>
       <div class="card">
         <ul class="podium" id="end-podium"></ul>
         <button id="btn-again" class="btn-primary full">Play again</button>
+        <button id="btn-feedback-end" class="btn-ghost full" style="margin-top:8px">💬 Give feedback</button>
         <button id="btn-home" class="btn-ghost full" style="margin-top:8px">Back to start</button>
         <p class="hint" id="end-hint"></p>
       </div>
     </div>
   </section>
 
-  <script type="module" src="game.js"></script>
+  <!-- ===================== FEEDBACK MODAL ===================== -->
+  <div id="feedback-modal" class="modal" style="display:none">
+    <div class="modal-card">
+      <button id="fb-close" class="modal-x" aria-label="Close">&times;</button>
+      <div id="fb-form">
+        <h3 class="fb-title">How was the game?</h3>
+        <div id="fb-stars" class="stars">
+          <span data-v="1">&#9733;</span><span data-v="2">&#9733;</span><span data-v="3">&#9733;</span><span data-v="4">&#9733;</span><span data-v="5">&#9733;</span>
+        </div>
+        <textarea id="fb-comment" placeholder="Anything to add? (optional)"></textarea>
+        <button id="fb-send" class="btn-primary full">Send feedback</button>
+      </div>
+      <div id="fb-thanks" class="fb-thanks" style="display:none">&#127881; Thanks for the feedback!</div>
+    </div>
+  </div>
+
+  <script type="module" src="game.js?v=3"></script>
 </body>
 </html>
