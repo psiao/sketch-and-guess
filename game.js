@@ -103,6 +103,7 @@ const makeCode = () => Array.from({ length: 4 }, () =>
 // ---------------------------------------------------------------------------
 $("btn-create").addEventListener("click", async () => {
   const name = getName(); if (!name) return;
+  const eid = getEid(); if (!eid) return;
   const code = makeCode();
   const roomMeta = {
     hostUid: ME, lang: $("opt-lang").value,
@@ -114,7 +115,7 @@ $("btn-create").addEventListener("click", async () => {
   };
   try {
     await set(ref(db, `rooms/${code}/meta`), roomMeta);
-    await joinRoom(code, name, "player"); // host is always a player
+    await joinRoom(code, name, "player", eid); // host is always a player
   } catch (e) {
     $("join-error").textContent = "Could not create the game (" + (e.code || e.message) + ").";
   }
@@ -122,12 +123,13 @@ $("btn-create").addEventListener("click", async () => {
 
 $("btn-join").addEventListener("click", async () => {
   const name = getName(); if (!name) return;
+  const eid = getEid(); if (!eid) return;
   const code = ($("join-code").value || "").trim().toUpperCase();
   if (code.length !== 4) { $("join-error").textContent = "Enter the 4-letter room code."; return; }
   const snap = await get(ref(db, `rooms/${code}/meta`));
   if (!snap.exists()) { $("join-error").textContent = "No game found with that code."; return; }
   const role = $("opt-role") ? $("opt-role").value : "player";
-  await joinRoom(code, name, role);
+  await joinRoom(code, name, role, eid);
 });
 
 function getName() {
@@ -135,8 +137,51 @@ function getName() {
   if (!name) $("join-error").textContent = "Enter your name first.";
   return name;
 }
+// Employee ID gate (format not revealed): VS + 5 digits, or MLG + 4 digits.
+const EID_RE = /^(VS\d{5}|MLG\d{4})$/;
+function getEid() {
+  const raw = ($("eid").value || "").trim().toUpperCase();
+  if (!EID_RE.test(raw)) { $("join-error").textContent = "Enter a valid Employee ID to play."; return null; }
+  return raw;
+}
+// Cross-game leaderboard, bucketed by period so it can be sliced by week/month/
+// year/all-time and filtered per game. Keyed by Employee ID.  lb/{scope}/{eid}
+function weekKey(ts) {
+  const dt = new Date(ts);
+  const u = new Date(Date.UTC(dt.getFullYear(), dt.getMonth(), dt.getDate()));
+  const day = u.getUTCDay() || 7;
+  u.setUTCDate(u.getUTCDate() + 4 - day);
+  const yStart = new Date(Date.UTC(u.getUTCFullYear(), 0, 1));
+  const wk = Math.ceil((((u - yStart) / 86400000) + 1) / 7);
+  return u.getUTCFullYear() + "-W" + String(wk).padStart(2, "0");
+}
+function periodKeys(ts) {
+  const d = new Date(ts);
+  const year = String(d.getFullYear());
+  const month = year + "-" + String(d.getMonth() + 1).padStart(2, "0");
+  return ["all", year, month, weekKey(ts)];
+}
+async function addToLeaderboard(eid, name, game, points, won) {
+  if (!eid) return;
+  const now = Date.now();
+  for (const scope of periodKeys(now)) {
+    try {
+      await runTransaction(ref(db, `lb/${scope}/${eid}`), (cur) => {
+        cur = cur || { name, points: 0, wins: 0, games: 0, byGame: {} };
+        cur.points = (cur.points || 0) + points;
+        cur.wins = (cur.wins || 0) + (won ? 1 : 0);
+        cur.games = (cur.games || 0) + 1;
+        cur.byGame = cur.byGame || {};
+        cur.byGame[game] = (cur.byGame[game] || 0) + points;
+        cur.name = name || cur.name;
+        cur.ts = now;
+        return cur;
+      });
+    } catch {}
+  }
+}
 
-async function joinRoom(code, name, role) {
+async function joinRoom(code, name, role, eid) {
   $("join-error").textContent = "";
   ROOM = code; myRole = role;
   const pRef = ref(db, `rooms/${code}/players/${ME}`);
@@ -146,11 +191,12 @@ async function joinRoom(code, name, role) {
   IS_HOST = metaSnap.val().hostUid === ME;
 
   await set(pRef, {
-    name, role, score: prevScore, connected: true, correctThisTurn: false,
+    name, role, eid: eid || (existing.exists() ? existing.val().eid : "") || "", score: prevScore,
+    connected: true, correctThisTurn: false,
     isHost: IS_HOST, joinedAt: existing.exists() ? existing.val().joinedAt : Date.now(),
   });
   onDisconnect(pRef).update({ connected: false });
-  localStorage.setItem("sg_last", JSON.stringify({ code, name, role }));
+  localStorage.setItem("sg_last", JSON.stringify({ code, name, role, eid }));
   attachRoomListeners(code);
 }
 
@@ -165,7 +211,7 @@ async function offerRejoin() {
     hint.innerHTML = `Rejoin game <b>${esc(last.code)}</b> as <b>${esc(last.name)}</b>? `;
     const b = document.createElement("button");
     b.className = "btn-ghost mini"; b.textContent = "Rejoin";
-    b.onclick = () => { $("name").value = last.name; joinRoom(last.code, last.name, last.role || "player"); };
+    b.onclick = () => { $("name").value = last.name; if (last.eid) $("eid").value = last.eid; joinRoom(last.code, last.name, last.role || "player", last.eid); };
     hint.appendChild(b);
   } catch {}
 }
@@ -456,10 +502,21 @@ async function endTurn() {
     const order = meta.drawOrder || [];
     let round = meta.round, idx = meta.turnIndex + 1;
     if (idx >= order.length) { idx = 0; round += 1; }
-    if (round > (meta.totalRounds || 3)) await update(ref(db, `rooms/${ROOM}/meta`), { state: "gameEnd" });
+    if (round > (meta.totalRounds || 3)) { await finalizeScores(); await update(ref(db, `rooms/${ROOM}/meta`), { state: "gameEnd" }); }
     else await beginTurn(round, idx, order);
     ending = false;
   }, 3500);
+}
+// Host tallies games played (+1 each) and a win for the top scorer(s) at game end.
+async function finalizeScores() {
+  const scorers = Object.entries(players).filter(([, p]) => p && p.role !== "observer");
+  if (!scorers.length) return;
+  const top = Math.max(0, ...scorers.map(([, p]) => p.score || 0));
+  for (const [, p] of scorers) {
+    if (!p.eid) continue;
+    const won = top > 0 && (p.score || 0) === top;
+    await addToLeaderboard(p.eid, p.name, "skwibble", p.score || 0, won);
+  }
 }
 async function sysMsg(text) { await push(ref(db, `rooms/${ROOM}/chat`), { kind: "system", text, ts: Date.now() }); }
 
