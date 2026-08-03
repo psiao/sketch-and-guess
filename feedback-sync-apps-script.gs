@@ -90,3 +90,20 @@ function saveSyncedSet_(ss, set) {
 function installTrigger() {
   ScriptApp.newTrigger("syncFeedback").timeBased().everyMinutes(10).create();
 }
+
+// ONE-TIME MIGRATION: run this once after pasting the new code.
+// Deletes the old per-session tabs (named "YYYY-MM-DD · CODE") and any existing
+// master tabs, clears the synced set, then re-pulls ALL feedback into fresh
+// "Skwibble Feedback" / "Bingo Feedback" tabs. Safe to run again anytime.
+function rebuildAll() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var toDelete = ss.getSheets().filter(function (sh) {
+    var n = sh.getName();
+    return n.indexOf(" \u00B7 ") !== -1 || n === "Skwibble Feedback" || n === "Bingo Feedback";
+  });
+  toDelete.forEach(function (sh) { try { ss.deleteSheet(sh); } catch (e) {} });
+  var sy = ss.getSheetByName("_synced");
+  if (sy) sy.clearContents();
+  syncFeedback();
+  ss.toast("Rebuilt: Skwibble/Bingo tabs recreated from all feedback.");
+}
