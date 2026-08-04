@@ -194,3 +194,9 @@ canvas { width:100%; aspect-ratio:4/3; background:#fff; border:1px solid var(--l
 .stars span.on { color:var(--brand-accent-2); }
 #fb-comment { width:100%; min-height:84px; resize:vertical; margin-bottom:14px; font-size:14px; }
 .fb-thanks { text-align:center; font-weight:700; font-size:17px; padding:28px 0; color:var(--good); }
+
+/* progressively revealed letter hints (guessers) */
+.tile.hinted { color: var(--brand-accent, #2451a9); }
+
+/* private "close guess" hint (only the guesser sees it) */
+.msg.close { color: var(--brand-accent, #2451a9); font-style: italic; opacity: .95; }

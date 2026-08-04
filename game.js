@@ -22,7 +22,7 @@ import {
   onDisconnect, runTransaction, serverTimestamp, off
 } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-database.js";
 
-import { WORDS, DEFAULT_DIFFICULTY } from "./words.js?v=4";
+import { WORDS, DEFAULT_DIFFICULTY } from "./words.js?v=6";
 
 // ---- DOM helpers ----------------------------------------------------------
 const $ = (id) => document.getElementById(id);
@@ -106,7 +106,7 @@ $("btn-create").addEventListener("click", async () => {
   const eid = getEid(); if (!eid) return;
   const code = makeCode();
   const roomMeta = {
-    hostUid: ME, lang: $("opt-lang").value,
+    hostUid: ME, lang: "en",
     totalRounds: Number($("opt-rounds").value),
     turnSeconds: Number($("opt-time").value),
     difficulty: Number(($("opt-diff") && $("opt-diff").value) || DEFAULT_DIFFICULTY),
@@ -285,18 +285,50 @@ function renderGameHeader() {
   const word = meta.word || "";
   const box = $("game-word");
   box.innerHTML = "";
-  word.split("").forEach((ch) => {
+  word.split("").forEach((ch, i) => {
     if (ch === " ") { const sp = document.createElement("span"); sp.className = "wsp"; box.appendChild(sp); return; }
     const tile = document.createElement("span");
     tile.className = "tile";
+    tile.dataset.pos = i;
     if (amDrawer || reveal) tile.textContent = ch.toUpperCase();
     box.appendChild(tile);
   });
+  if (!amDrawer && !reveal) updateHints();
   // role banner
   const banner = $("role-banner");
   if (myRole === "observer") { banner.textContent = "👁 You're observing"; banner.style.display = "block"; }
   else if (amDrawer && meta.state === "drawing") { banner.textContent = "✏️ Your turn to draw!"; banner.style.display = "block"; }
   else banner.style.display = "none";
+}
+
+// Progressive letter hints for guessers: reveal a few letters as the clock runs
+// down. Deterministic (seeded by the word) so every guesser sees the same ones.
+function hintOrder(word) {
+  const pos = [];
+  for (let i = 0; i < word.length; i++) if (word[i] !== " ") pos.push(i);
+  let seed = 0; for (let i = 0; i < word.length; i++) seed = (seed * 31 + word.charCodeAt(i)) >>> 0;
+  const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+  for (let i = pos.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [pos[i], pos[j]] = [pos[j], pos[i]]; }
+  return pos;
+}
+function updateHints() {
+  if (!meta || meta.state !== "drawing") return;
+  if (meta.currentDrawer === ME) return;      // drawer sees the whole word
+  const box = $("game-word"); if (!box) return;
+  const word = meta.word || ""; if (!word) return;
+  const tiles = box.querySelectorAll(".tile"); if (!tiles.length) return;
+  const letters = word.split("").filter((c) => c !== " ").length;
+  const maxReveal = Math.min(2, Math.max(0, letters - 1)); // at most 2 letters, at random
+  const total = (meta.turnSeconds || 80) * 1000;
+  const left = Math.max(0, (meta.turnEndsAt || 0) - Date.now());
+  const f = total ? 1 - left / total : 0;               // fraction elapsed
+  const numReveal = Math.max(0, Math.min(maxReveal, Math.round(maxReveal * (f - 0.4) / 0.6)));
+  const revealSet = new Set(hintOrder(word).slice(0, numReveal));
+  tiles.forEach((t) => {
+    const p = Number(t.dataset.pos);
+    if (revealSet.has(p)) { t.textContent = (word[p] || "").toUpperCase(); t.classList.add("hinted"); }
+    else { t.textContent = ""; t.classList.remove("hinted"); }
+  });
 }
 
 function playerEntries() {
@@ -527,6 +559,39 @@ $("guess-send").addEventListener("click", sendGuess);
 $("guess-input").addEventListener("keydown", (e) => { if (e.key === "Enter") sendGuess(); });
 const normalize = (s) => (s || "").toLowerCase().trim().replace(/\s+/g, " ");
 
+// Levenshtein distance (for typos) + stem/prefix match (for word variations).
+function lev(a, b) {
+  const m = a.length, n = b.length; if (!m) return n; if (!n) return m;
+  let prev = Array.from({ length: n + 1 }, (_, i) => i);
+  for (let i = 1; i <= m; i++) {
+    const cur = [i];
+    for (let j = 1; j <= n; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    prev = cur;
+  }
+  return prev[n];
+}
+const stemWord = (s) => s.replace(/(ings|ing|ers|er|ions|ion|ments|ment|edly|ed|es|ly|s|e|y)$/, "");
+// "close" = a variation/typo of the answer (e.g. recycle vs recycling), not exact.
+function isClose(guess, word) {
+  const g = normalize(guess), w = normalize(word);
+  if (!g || !w || g === w) return false;
+  let p = 0; while (p < g.length && p < w.length && g[p] === w[p]) p++;   // shared prefix
+  const minLen = Math.min(g.length, w.length);
+  if (p >= 4 && p >= minLen - 3 && Math.abs(g.length - w.length) <= 4) return true;
+  if (w.length >= 4 && Math.abs(g.length - w.length) <= 2 && lev(g, w) <= 2) return true;
+  const sg = stemWord(g), sw = stemWord(w);
+  if (sg.length >= 3 && sg === sw) return true;
+  return false;
+}
+// Private, local-only hint to the guesser (never broadcast, so it can't leak).
+function showCloseHint(text) {
+  const log = $("chatlog"); if (!log) return;
+  const div = document.createElement("div");
+  div.className = "msg close";
+  div.textContent = `“${text}” is close — keep trying!`;
+  log.appendChild(div); log.scrollTop = log.scrollHeight;
+}
+
 async function sendGuess() {
   const input = $("guess-input");
   const text = input.value.trim();
@@ -551,6 +616,8 @@ async function sendGuess() {
     Sound.mine();
     // Report to the host with a server timestamp; the HOST decides rank + points.
     await set(ref(db, `rooms/${ROOM}/correct/${ME}`), { name: me?.name || "?", at: serverTimestamp() });
+  } else if (isClose(text, meta.word)) {
+    showCloseHint(text); // private to this guesser; not broadcast so it can't leak
   } else {
     await push(ref(db, `rooms/${ROOM}/chat`), { kind: "guess", who: me?.name || "?", text, ts: Date.now() });
   }
@@ -712,6 +779,7 @@ setInterval(() => {
     timerEl.textContent = secs;
     timerEl.classList.toggle("urgent", secs <= 10);
     if (secs <= 10 && secs >= 1 && secs !== lastTickSec) { lastTickSec = secs; Sound.tick(); }
+    updateHints();
   } else {
     timerEl.textContent = meta.state === "turnEnd" ? "⏱" : "–";
     timerEl.classList.remove("urgent");
